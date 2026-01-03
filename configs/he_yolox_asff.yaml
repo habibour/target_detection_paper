@@ -1,0 +1,107 @@
+# HE-YOLOX Configuration File
+
+# Model Configuration
+model:
+  name: "HE-YOLOX-S"
+  size: "s"  # s, m, l, x
+  num_classes: 13  # VisDrone2019 has 13 classes (including ignored)
+  depth: 0.33
+  width: 0.5
+  input_size: [640, 640]
+
+# Dataset Configuration
+data:
+  dataset_name: "VisDrone2019"
+  data_dir: "./data/VisDrone2019"
+  num_classes: 13
+  classes:
+    - 'ignored'
+    - 'pedestrian'
+    - 'people'
+    - 'bicycle'
+    - 'car'
+    - 'van'
+    - 'truck'
+    - 'tricycle'
+    - 'awning-tricycle'
+    - 'bus'
+    - 'motor'
+    - 'others'
+    - 'tree'
+    - 'building'
+  
+  train_ann: "VisDrone2019-DET-train/annotations"
+  val_ann: "VisDrone2019-DET-val/annotations"
+  test_ann: "VisDrone2019-DET-test-dev/images"
+
+# Training Configuration
+train:
+  batch_size: 8
+  num_workers: 4
+  epochs: 300
+  warmup_epochs: 5
+  
+  # Optimizer
+  optimizer: "SGD"  # SGD or Adam
+  lr: 0.01
+  momentum: 0.9
+  weight_decay: 0.0005
+  
+  # Learning rate scheduler
+  scheduler: "cosine"  # cosine, step, multistep
+  min_lr_ratio: 0.05
+  
+  # Data augmentation
+  augmentation:
+    hsv_prob: 1.0
+    flip_prob: 0.5
+    degrees: 10.0
+    translate: 0.1
+    scale: 0.5
+    shear: 2.0
+    mosaic_prob: 1.0
+    mixup_prob: 0.15
+  
+  # Loss weights
+  loss_weights:
+    iou: 5.0
+    obj: 1.0
+    cls: 1.0
+  
+  # Checkpoints
+  save_interval: 10
+  eval_interval: 10
+  print_interval: 50
+
+# Validation Configuration
+val:
+  batch_size: 8
+  num_workers: 4
+  conf_threshold: 0.01
+  nms_threshold: 0.65
+  iou_threshold: 0.5
+
+# Test Configuration
+test:
+  batch_size: 1
+  num_workers: 1
+  conf_threshold: 0.01
+  nms_threshold: 0.65
+  save_results: true
+
+# Device Configuration
+device: "cuda"  # cuda or cpu
+mixed_precision: true  # Use mixed precision training (AMP)
+
+# Output directories
+output:
+  model_dir: "./checkpoints"
+  log_dir: "./logs"
+  results_dir: "./results"
+
+# Resume training
+resume:
+  checkpoint: null  # Path to checkpoint to resume from
+  
+# Pretrained weights
+pretrained: null  # Path to pretrained weights
