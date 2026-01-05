@@ -246,16 +246,31 @@ def main():
     
     # Resume from checkpoint if specified
     start_epoch = 0
+    best_val_loss = float('inf')
+    
     if args.resume is not None:
         print(f"Resuming from checkpoint: {args.resume}")
-        checkpoint = torch.load(args.resume)
+        checkpoint = torch.load(args.resume, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
+        
+        # Restore scheduler state if available
+        if scheduler is not None and 'scheduler_state_dict' in checkpoint:
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        elif scheduler is not None:
+            # Manually step scheduler to correct position
+            for _ in range(start_epoch * len(train_loader)):
+                scheduler.step()
+        
+        # Restore best validation loss if available
+        if 'best_val_loss' in checkpoint:
+            best_val_loss = checkpoint['best_val_loss']
+        
+        print(f"Resumed from epoch {start_epoch}, best_val_loss: {best_val_loss:.4f}")
     
     # Training loop
     print("Starting training...")
-    best_val_loss = float('inf')
     
     for epoch in range(start_epoch, config['train']['epochs']):
         print(f"\nEpoch {epoch + 1}/{config['train']['epochs']}")
@@ -279,23 +294,31 @@ def main():
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 save_path = os.path.join(config['output']['model_dir'], 'best.pth')
-                torch.save({
+                save_dict = {
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'val_loss': val_loss,
-                }, save_path)
+                    'best_val_loss': best_val_loss,
+                }
+                if scheduler is not None:
+                    save_dict['scheduler_state_dict'] = scheduler.state_dict()
+                torch.save(save_dict, save_path)
                 print(f"Saved best model to {save_path}")
         
         # Save checkpoint
         if (epoch + 1) % config['train']['save_interval'] == 0:
             save_path = os.path.join(config['output']['model_dir'], f'epoch_{epoch + 1}.pth')
-            torch.save({
+            save_dict = {
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'train_loss': train_loss,
-            }, save_path)
+                'best_val_loss': best_val_loss,
+            }
+            if scheduler is not None:
+                save_dict['scheduler_state_dict'] = scheduler.state_dict()
+            torch.save(save_dict, save_path)
             print(f"Saved checkpoint to {save_path}")
     
     print("Training completed!")
