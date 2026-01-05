@@ -24,8 +24,12 @@ class TrainTransform:
         Args:
             image: numpy array (H, W, 3) in BGR format
             target: dict with 'boxes' and 'labels'
-            input_dim: tuple (height, width)
+            input_dim: int or tuple (height, width)
         """
+        # Handle both int and tuple input_dim
+        if isinstance(input_dim, int):
+            input_dim = (input_dim, input_dim)
+        
         boxes = target['boxes'].copy()
         labels = target['labels'].copy()
         
@@ -83,7 +87,12 @@ class TrainTransform:
             r_scale: resize ratio
         """
         h, w = image.shape[:2]
-        input_h, input_w = input_size
+        
+        # Handle both int and tuple input_size
+        if isinstance(input_size, int):
+            input_h, input_w = input_size, input_size
+        else:
+            input_h, input_w = input_size
         
         # Calculate resize ratio
         r = min(input_h / h, input_w / w)
@@ -138,8 +147,12 @@ class ValTransform:
         Args:
             image: numpy array (H, W, 3) in BGR format
             target: dict with 'boxes' and 'labels'
-            input_dim: tuple (height, width)
+            input_dim: int or tuple (height, width)
         """
+        # Handle both int and tuple input_dim
+        if isinstance(input_dim, int):
+            input_dim = (input_dim, input_dim)
+        
         boxes = target['boxes'].copy()
         labels = target['labels'].copy()
         
@@ -165,7 +178,12 @@ class ValTransform:
     def preprocess_image(self, image, input_size):
         """Resize image with letterbox padding"""
         h, w = image.shape[:2]
-        input_h, input_w = input_size
+        
+        # Handle both int and tuple input_size
+        if isinstance(input_size, int):
+            input_h, input_w = input_size, input_size
+        else:
+            input_h, input_w = input_size
         
         # Calculate resize ratio
         r = min(input_h / h, input_w / w)
