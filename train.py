@@ -11,6 +11,7 @@ import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from torch.cuda.amp import autocast, GradScaler
 
 from models import build_he_yolox
 from utils import VisDroneDataset, collate_fn, TrainTransform, ValTransform, YOLOXLoss
@@ -79,14 +80,35 @@ def build_dataloader(config, split='train'):
 
 
 def build_optimizer(config, model):
-    """Build optimizer"""
+    """Build optimizer with different learning rates for backbone vs neck/head"""
     optimizer_name = config['train']['optimizer']
     lr = config['train']['lr']
     weight_decay = config['train']['weight_decay']
     
+    # Use lower learning rate for pretrained backbone, higher for neck/head
+    backbone_lr = lr * 0.1  # 10x lower for fine-tuning pretrained backbone
+    
+    # Separate parameters into groups
+    backbone_params = []
+    other_params = []
+    
+    for name, param in model.named_parameters():
+        if 'backbone' in name:
+            backbone_params.append(param)
+        else:
+            other_params.append(param)
+    
+    param_groups = [
+        {'params': backbone_params, 'lr': backbone_lr},  # Pretrained backbone
+        {'params': other_params, 'lr': lr},  # Neck (ASFF) and Head
+    ]
+    
+    print(f"  Backbone params: {len(backbone_params)} tensors, lr={backbone_lr}")
+    print(f"  Neck/Head params: {len(other_params)} tensors, lr={lr}")
+    
     if optimizer_name == 'SGD':
         optimizer = optim.SGD(
-            model.parameters(),
+            param_groups,
             lr=lr,
             momentum=config['train']['momentum'],
             weight_decay=weight_decay,
@@ -94,7 +116,7 @@ def build_optimizer(config, model):
         )
     elif optimizer_name == 'Adam':
         optimizer = optim.Adam(
-            model.parameters(),
+            param_groups,
             lr=lr,
             weight_decay=weight_decay
         )
@@ -126,9 +148,10 @@ def build_scheduler(config, optimizer, total_steps):
     return scheduler
 
 
-def train_one_epoch(model, dataloader, optimizer, criterion, device, epoch, writer, config):
-    """Train for one epoch"""
+def train_one_epoch(model, dataloader, optimizer, criterion, device, epoch, writer, config, scaler=None):
+    """Train for one epoch with AMP support"""
     model.train()
+    use_amp = scaler is not None
     
     pbar = tqdm(dataloader, desc=f"Epoch {epoch}")
     total_loss = 0.0
@@ -136,16 +159,20 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, epoch, writ
     for batch_idx, (images, targets) in enumerate(pbar):
         images = images.to(device)
         
-        # Forward pass
-        outputs = model(images)
+        # Forward pass with AMP
+        with autocast(enabled=use_amp):
+            outputs = model(images)
+            loss, loss_dict = criterion(outputs, targets)
         
-        # Calculate loss
-        loss, loss_dict = criterion(outputs, targets)
-        
-        # Backward pass
+        # Backward pass with AMP
         optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        if use_amp:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            optimizer.step()
         
         # Update progress bar
         total_loss += loss.item()
@@ -164,8 +191,8 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, epoch, writ
     return total_loss / len(dataloader)
 
 
-def validate(model, dataloader, criterion, device, epoch, writer):
-    """Validate the model"""
+def validate(model, dataloader, criterion, device, epoch, writer, use_amp=False):
+    """Validate the model with AMP support"""
     model.eval()
     total_loss = 0.0
     
@@ -175,11 +202,10 @@ def validate(model, dataloader, criterion, device, epoch, writer):
         for images, targets in pbar:
             images = images.to(device)
             
-            # Forward pass
-            outputs = model(images)
-            
-            # Calculate loss
-            loss, loss_dict = criterion(outputs, targets)
+            # Forward pass with AMP
+            with autocast(enabled=use_amp):
+                outputs = model(images)
+                loss, loss_dict = criterion(outputs, targets)
             
             total_loss += loss.item()
             pbar.set_postfix({'val_loss': f"{total_loss / (len(pbar)):.4f}"})
@@ -217,11 +243,12 @@ def main():
     os.makedirs(config['output']['model_dir'], exist_ok=True)
     os.makedirs(config['output']['log_dir'], exist_ok=True)
     
-    # Build model
+    # Build model with pretrained backbone
     print("Building model...")
     model = build_he_yolox(
         model_size=config['model']['size'],
-        num_classes=config['model']['num_classes']
+        num_classes=config['model']['num_classes'],
+        pretrained=True  # Load COCO pretrained backbone for faster convergence!
     )
     model = model.to(device)
     
@@ -240,6 +267,12 @@ def main():
     
     # Build loss criterion
     criterion = YOLOXLoss(num_classes=config['model']['num_classes'])
+    
+    # Mixed Precision (AMP) for 2x speedup
+    use_amp = device.type == 'cuda'
+    scaler = GradScaler() if use_amp else None
+    if use_amp:
+        print("Using Mixed Precision (AMP) for faster training")
     
     # Tensorboard writer
     writer = SummaryWriter(log_dir=config['output']['log_dir'])
@@ -275,19 +308,19 @@ def main():
     for epoch in range(start_epoch, config['train']['epochs']):
         print(f"\nEpoch {epoch + 1}/{config['train']['epochs']}")
         
-        # Train
+        # Train with AMP
         train_loss = train_one_epoch(
             model, train_loader, optimizer, criterion,
-            device, epoch, writer, config
+            device, epoch, writer, config, scaler
         )
         
         # Update learning rate
         if scheduler is not None:
             scheduler.step()
         
-        # Validate
+        # Validate with AMP
         if (epoch + 1) % config['train']['eval_interval'] == 0:
-            val_loss = validate(model, val_loader, criterion, device, epoch, writer)
+            val_loss = validate(model, val_loader, criterion, device, epoch, writer, use_amp)
             print(f"Validation Loss: {val_loss:.4f}")
             
             # Save best model

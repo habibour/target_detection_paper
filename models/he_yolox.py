@@ -5,9 +5,19 @@ Complete model architecture combining CSPDarknet backbone, ASFF neck, and detect
 
 import torch
 import torch.nn as nn
+import os
 from models.backbone import build_cspdarknet
 from models.neck import ASFFNeck
 from models.head import DecoupledHead
+
+
+# YOLOX pretrained weights URLs (from MEGVII)
+PRETRAINED_URLS = {
+    's': 'https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_s.pth',
+    'm': 'https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_m.pth',
+    'l': 'https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_l.pth',
+    'x': 'https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_x.pth',
+}
 
 
 class HEYOLOX(nn.Module):
@@ -81,13 +91,14 @@ class HEYOLOX(nn.Module):
         return outputs
 
 
-def build_he_yolox(model_size="s", num_classes=13):
+def build_he_yolox(model_size="s", num_classes=13, pretrained=True):
     """
     Build HE-YOLOX model with different sizes
     
     Args:
         model_size: Model size - 's' (small), 'm' (medium), 'l' (large), 'x' (extra large)
         num_classes: Number of classes (default 13 for VisDrone2019)
+        pretrained: If True, load pretrained YOLOX backbone weights (COCO pretrained)
         
     Returns:
         HE-YOLOX model
@@ -101,12 +112,70 @@ def build_he_yolox(model_size="s", num_classes=13):
     
     config = size_config.get(model_size.lower(), size_config['s'])
     
-    return HEYOLOX(
+    model = HEYOLOX(
         num_classes=num_classes,
         depth=config['depth'],
         width=config['width'],
         model_size=model_size
     )
+    
+    # Load pretrained weights
+    if pretrained:
+        model = load_pretrained_weights(model, model_size)
+    
+    return model
+
+
+def load_pretrained_weights(model, model_size="s"):
+    """
+    Load pretrained YOLOX backbone weights
+    
+    This loads the official MEGVII YOLOX weights trained on COCO dataset
+    and transfers the backbone weights to our model.
+    """
+    import torch.hub
+    
+    url = PRETRAINED_URLS.get(model_size.lower())
+    if url is None:
+        print(f"No pretrained weights for size '{model_size}', training from scratch")
+        return model
+    
+    print(f"Loading pretrained YOLOX-{model_size.upper()} weights...")
+    
+    # Download weights
+    cache_dir = os.path.expanduser("~/.cache/torch/hub/checkpoints")
+    os.makedirs(cache_dir, exist_ok=True)
+    weight_file = os.path.join(cache_dir, f"yolox_{model_size}.pth")
+    
+    if not os.path.exists(weight_file):
+        print(f"Downloading pretrained weights from {url}")
+        torch.hub.download_url_to_file(url, weight_file)
+    
+    # Load checkpoint
+    ckpt = torch.load(weight_file, map_location="cpu")
+    if "model" in ckpt:
+        pretrained_dict = ckpt["model"]
+    else:
+        pretrained_dict = ckpt
+    
+    # Map YOLOX backbone keys to our backbone
+    model_dict = model.state_dict()
+    
+    # Filter and load backbone weights only
+    loaded_keys = []
+    for key, value in pretrained_dict.items():
+        # YOLOX uses 'backbone.' prefix
+        if key.startswith('backbone.'):
+            new_key = key  # Our model also uses 'backbone.' prefix
+            if new_key in model_dict and model_dict[new_key].shape == value.shape:
+                model_dict[new_key] = value
+                loaded_keys.append(key)
+    
+    model.load_state_dict(model_dict)
+    print(f"✅ Loaded {len(loaded_keys)} pretrained backbone layers")
+    print(f"   Neck and Head will be trained from scratch (specific to our ASFF design)")
+    
+    return model
 
 
 def get_model_info(model, img_size=640):
