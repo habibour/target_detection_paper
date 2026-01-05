@@ -94,6 +94,14 @@ class ASFF(nn.Module):
         Returns:
             Fused feature map at target level
         """
+        # Get target size based on level
+        if self.level == 0:
+            target_size = x_level_0.shape[2:]
+        elif self.level == 1:
+            target_size = x_level_1.shape[2:]
+        else:
+            target_size = x_level_2.shape[2:]
+        
         # Feature adjustment - resize all inputs to target level
         if self.level == 0:
             level_0_resized = x_level_0
@@ -107,6 +115,14 @@ class ASFF(nn.Module):
             level_0_resized = self.stride_level_0(x_level_0)
             level_1_resized = self.stride_level_1(x_level_1)
             level_2_resized = x_level_2
+        
+        # Ensure all tensors have the same spatial size (critical for fusion)
+        if level_0_resized.shape[2:] != target_size:
+            level_0_resized = F.interpolate(level_0_resized, size=target_size, mode='nearest')
+        if level_1_resized.shape[2:] != target_size:
+            level_1_resized = F.interpolate(level_1_resized, size=target_size, mode='nearest')
+        if level_2_resized.shape[2:] != target_size:
+            level_2_resized = F.interpolate(level_2_resized, size=target_size, mode='nearest')
         
         # Learn adaptive weights for each level
         level_0_weight_v = self.weight_level_0(level_0_resized)
