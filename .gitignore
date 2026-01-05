@@ -1,0 +1,36 @@
+# Dataset folders
+VisDrone2019-DET-train/
+VisDrone2019-DET-val/
+VisDrone2019-DET-test-dev/
+VisDrone2019-DET-test-challenge/
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
+
+# Logs and checkpoints
+*.pth
+*.pt
+logs/
+runs/
+checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db

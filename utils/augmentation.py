@@ -121,6 +121,10 @@ class TrainTransform:
         """
         Apply HSV color space augmentation
         """
+        # Ensure image is contiguous
+        if not image.flags['C_CONTIGUOUS']:
+            image = np.ascontiguousarray(image)
+        
         r = np.random.uniform(-1, 1, 3) * [hgain, sgain, vgain] + 1
         
         hue, sat, val = cv2.split(cv2.cvtColor(image, cv2.COLOR_BGR2HSV))
@@ -132,7 +136,8 @@ class TrainTransform:
         lut_val = np.clip(x * r[2], 0, 255).astype(dtype)
         
         img_hsv = cv2.merge((cv2.LUT(hue, lut_hue), cv2.LUT(sat, lut_sat), cv2.LUT(val, lut_val)))
-        cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR, dst=image)
+        # Don't use dst parameter, just return the result
+        image = cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)
         
         return image
 
