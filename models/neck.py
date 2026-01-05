@@ -147,26 +147,26 @@ class ASFFNeck(nn.Module):
         """
         super(ASFFNeck, self).__init__()
         
-        # Path Aggregation - Bottom-up path
+        # Path Aggregation - Top-down path
         self.lateral_conv0 = BaseConv(in_channels_list[3], out_channels, 1, 1)  # C5
         self.C3_p5 = BaseConv(in_channels_list[2], out_channels, 1, 1)  # C4
-        self.C3_n5 = BaseConv(out_channels, out_channels, 3, 1)
+        self.C3_n5 = BaseConv(out_channels * 2, out_channels, 3, 1)  # After cat: 2*out_channels
         
         self.C3_p4 = BaseConv(in_channels_list[1], out_channels, 1, 1)  # C3
-        self.C3_n4 = BaseConv(out_channels, out_channels, 3, 1)
+        self.C3_n4 = BaseConv(out_channels * 2, out_channels, 3, 1)  # After cat: 2*out_channels
         
         self.C3_p3 = BaseConv(in_channels_list[0], out_channels, 1, 1)  # C2
-        self.C3_n3 = BaseConv(out_channels, out_channels, 3, 1)
+        self.C3_n3 = BaseConv(out_channels * 2, out_channels, 3, 1)  # After cat: 2*out_channels
         
         # Upsample layers
         self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
         
         # Bottom-up path (P2 -> P5)
         self.bu_conv4 = BaseConv(out_channels, out_channels, 3, 2)  # P2 -> P3
-        self.C3_n6 = BaseConv(out_channels, out_channels, 3, 1)
+        self.C3_n6 = BaseConv(out_channels * 2, out_channels, 3, 1)  # After cat: 2*out_channels
         
         self.bu_conv5 = BaseConv(out_channels, out_channels, 3, 2)  # P3 -> P4
-        self.C3_n7 = BaseConv(out_channels, out_channels, 3, 1)
+        self.C3_n7 = BaseConv(out_channels * 2, out_channels, 3, 1)  # After cat: 2*out_channels
         
         # ASFF modules for adaptive fusion
         channels = [out_channels, out_channels, out_channels]
