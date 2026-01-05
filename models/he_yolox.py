@@ -158,22 +158,35 @@ def load_pretrained_weights(model, model_size="s"):
     else:
         pretrained_dict = ckpt
     
+    # Debug: print some keys from pretrained model
+    pretrained_keys = list(pretrained_dict.keys())
+    print(f"  Pretrained model has {len(pretrained_keys)} keys")
+    print(f"  Sample keys: {pretrained_keys[:5]}")
+    
     # Map YOLOX backbone keys to our backbone
     model_dict = model.state_dict()
+    our_keys = list(model_dict.keys())
+    print(f"  Our model has {len(our_keys)} keys")
+    print(f"  Sample keys: {our_keys[:5]}")
     
-    # Filter and load backbone weights only
+    # Filter and load matching weights (backbone, and potentially partial neck)
     loaded_keys = []
     for key, value in pretrained_dict.items():
-        # YOLOX uses 'backbone.' prefix
-        if key.startswith('backbone.'):
-            new_key = key  # Our model also uses 'backbone.' prefix
-            if new_key in model_dict and model_dict[new_key].shape == value.shape:
-                model_dict[new_key] = value
+        if key in model_dict:
+            if model_dict[key].shape == value.shape:
+                model_dict[key] = value
                 loaded_keys.append(key)
+            else:
+                print(f"  Shape mismatch: {key} - pretrained {value.shape} vs ours {model_dict[key].shape}")
     
     model.load_state_dict(model_dict)
-    print(f"✅ Loaded {len(loaded_keys)} pretrained backbone layers")
-    print(f"   Neck and Head will be trained from scratch (specific to our ASFF design)")
+    print(f"✅ Loaded {len(loaded_keys)} pretrained layers")
+    
+    # Show what was loaded
+    backbone_loaded = sum(1 for k in loaded_keys if 'backbone' in k)
+    other_loaded = len(loaded_keys) - backbone_loaded
+    print(f"   Backbone: {backbone_loaded} layers loaded")
+    print(f"   Other: {other_loaded} layers loaded")
     
     return model
 
