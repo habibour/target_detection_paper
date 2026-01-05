@@ -193,7 +193,11 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, epoch, writ
 
 def validate(model, dataloader, criterion, device, epoch, writer, use_amp=False):
     """Validate the model with AMP support"""
-    model.eval()
+    # Keep model in training mode for consistent output format
+    # (eval mode changes head output format which breaks the loss function)
+    # But disable gradient computation
+    was_training = model.training
+    model.train()  # Keep training mode for output format
     total_loss = 0.0
     
     with torch.no_grad():
@@ -214,6 +218,10 @@ def validate(model, dataloader, criterion, device, epoch, writer, use_amp=False)
     
     if writer is not None:
         writer.add_scalar('val/loss', avg_loss, epoch)
+    
+    # Restore original mode
+    if not was_training:
+        model.eval()
     
     return avg_loss
 
