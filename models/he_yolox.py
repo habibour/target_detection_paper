@@ -169,24 +169,36 @@ def load_pretrained_weights(model, model_size="s"):
     print(f"  Our model has {len(our_keys)} keys")
     print(f"  Sample keys: {our_keys[:5]}")
     
-    # Filter and load matching weights (backbone, and potentially partial neck)
+    # Key mapping: YOLOX uses 'backbone.backbone.X' but ours uses 'backbone.X'
     loaded_keys = []
     for key, value in pretrained_dict.items():
-        if key in model_dict:
-            if model_dict[key].shape == value.shape:
-                model_dict[key] = value
-                loaded_keys.append(key)
+        new_key = key
+        
+        # Fix backbone key mapping: 'backbone.backbone.X' -> 'backbone.X'
+        if key.startswith('backbone.backbone.'):
+            new_key = key.replace('backbone.backbone.', 'backbone.')
+        
+        # Skip head.cls_preds (different num_classes: 80 vs 13)
+        if 'cls_preds' in new_key:
+            continue
+            
+        if new_key in model_dict:
+            if model_dict[new_key].shape == value.shape:
+                model_dict[new_key] = value
+                loaded_keys.append(new_key)
             else:
-                print(f"  Shape mismatch: {key} - pretrained {value.shape} vs ours {model_dict[key].shape}")
+                print(f"  Shape mismatch: {new_key} - pretrained {value.shape} vs ours {model_dict[new_key].shape}")
     
     model.load_state_dict(model_dict)
     print(f"✅ Loaded {len(loaded_keys)} pretrained layers")
     
     # Show what was loaded
     backbone_loaded = sum(1 for k in loaded_keys if 'backbone' in k)
-    other_loaded = len(loaded_keys) - backbone_loaded
-    print(f"   Backbone: {backbone_loaded} layers loaded")
-    print(f"   Other: {other_loaded} layers loaded")
+    neck_loaded = sum(1 for k in loaded_keys if 'neck' in k)
+    head_loaded = sum(1 for k in loaded_keys if 'head' in k)
+    print(f"   Backbone: {backbone_loaded} layers")
+    print(f"   Neck: {neck_loaded} layers") 
+    print(f"   Head: {head_loaded} layers (excluding cls_preds)")
     
     return model
 
