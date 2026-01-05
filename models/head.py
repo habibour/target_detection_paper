@@ -28,9 +28,10 @@ class DecoupledHead(nn.Module):
         self.obj_preds = nn.ModuleList()
         
         for i in range(len(in_channels)):
+            # in_channels already width-adjusted from neck, don't multiply again
             self.stems.append(
                 Conv(
-                    in_channels=int(in_channels[i] * width),
+                    in_channels=in_channels[i],
                     out_channels=int(256 * width),
                     ksize=1,
                     stride=1,
